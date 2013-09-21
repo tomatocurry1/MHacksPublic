@@ -1,4 +1,5 @@
-var c = new fabric.Canvas('c')
+var c = new fabric.Canvas('c'),
+    cEl = $(c.upperCanvasEl)
 c.setWidth(1000)
 c.setHeight(500)
 
@@ -24,31 +25,16 @@ gate_types = {
 }
 
 function update() {
-    if (gates.length) {
-        for (var i = gates.length - 1; i >= 0; i--) {
-            if (gates[i].dragged) {
-                
-            }
-        }
-    }
     c.renderAll()
     fabric.util.requestAnimFrame(update, c.upperCanvasEl)
 }
 fabric.util.requestAnimFrame(update, c.upperCanvasEl)
 
-function set_dragged(g) {
-    for (var i = gates.length - 1; i >= 0; i--) {
-        gates[i].dragged = false
-    }
-    g.dragged = true
-}
-
-function create_gate(type, x, y, dragged) {
+function create_gate(type, x, y) {
     var g = {
         id: uid++,
         type: type,
         shape: gate_types[type].make_shape(x, y),
-        dragged: dragged || false
     }
     gates.push(g)
     c.add(g.shape)

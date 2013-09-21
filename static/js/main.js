@@ -9,6 +9,36 @@ var uid = 100
 
 var socket = io.connect()
 
+var AND_svg;
+var OR_svg;
+var NOT_svg;
+var NAND_svg;
+var XOR_svg;
+var XNOR_svg;
+var NOR_svg;
+    fabric.loadSVGFromURL("images/AND.svg",function(objects, options) {
+        AND_svg = fabric.util.groupSVGElements(objects, options);
+    });
+    fabric.loadSVGFromURL("images/OR_3.svg",function(objects, options) {
+        OR_svg = fabric.util.groupSVGElements(objects, options);
+    });
+    fabric.loadSVGFromURL("images/NOT.svg",function(objects, options) {
+        NOT_svg = fabric.util.groupSVGElements(objects, options);
+    });
+    fabric.loadSVGFromURL("images/NAND.svg",function(objects, options) {
+        NAND_svg = fabric.util.groupSVGElements(objects, options);
+    });
+    fabric.loadSVGFromURL("images/XOR_2.svg",function(objects, options) {
+        XOR_svg = fabric.util.groupSVGElements(objects, options);
+    });
+    fabric.loadSVGFromURL("images/XNOR_2.svg",function(objects, options) {
+        XNOR_svg = fabric.util.groupSVGElements(objects, options);
+    });
+    fabric.loadSVGFromURL("images/NOR_2.svg",function(objects, options) {
+        NOR_svg = fabric.util.groupSVGElements(objects, options);
+    });
+
+
 gate_types = {
     'and': {
         args: 2,
@@ -282,3 +312,14 @@ socket.on('move', function(data) {
         pos = null
     }
 })
+
+function create_SVG(type, x, y){
+    fabric.loadSVGFromURL("images/OR_3.svg",function(objects, options) {
+        var svg = fabric.util.groupSVGElements(objects, options);
+        svg.set({'left': x, 'top': y, 'padding':0})
+        svg.setCoords();
+        c.add(svg)
+        c.renderAll()
+
+    });
+}

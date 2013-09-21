@@ -20,6 +20,13 @@ for (var i = ops.length - 1; i >= 0; i--) {
     })(i))
 }
 
+fabric.loadSVGFromURL("images/circle.svg", function(objects, options) {
+    svgs['toggle'] = fabric.util.groupSVGElements(objects, options)
+})
+fabric.loadSVGFromURL("images/stopwatch.svg", function(objects, options) {
+    svgs['stopwatch'] = fabric.util.groupSVGElements(objects, options)
+})
+
 function get_svg_for_type(type, x, y) {
     var g = fabric.util.object.clone(svgs[type])
     g.set({
@@ -196,6 +203,12 @@ c.on('object:moving', function(e) {
                 }, gates[e.target._objects[i].gate_id])
             }
         }
+    }
+})
+
+c.on('mouse:down', function(e) {
+    if (e.target.hasOwnProperty('gate_id')) {
+        socket.emit('click', { 'id': e.target.gate_id })
     }
 })
 

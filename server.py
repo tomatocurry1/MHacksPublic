@@ -1,5 +1,6 @@
 import flask
 import sys
+import time
 import werkzeug.serving
 import werkzeug.debug
 from socketio import socketio_manage
@@ -95,7 +96,36 @@ class NorGate(Gate):
 NorGate.type = 'nor'
 NorGate.num_args = 2
 
-classes = [ AndGate, OrGate, NotGate, NandGate, XorGate, XNorGate, NorGate ]
+class ToggleButton(Gate):
+    def __init__(self, id_, x, y):
+        super(ToggleButton, self).__init__(id_, x, y)
+        self.on = False
+
+    def run(self, _):
+        return self.on
+
+    def on_click(self):
+        self.on = not self.on
+
+ToggleButton.type = 'toggle'
+ToggleButton.num_args = 0
+
+class Stopwatch(Gate):
+    def __init__(self, id_, x, y):
+        super(Stopwatch, self).__init__(id_, x, y)
+        self.start_time = time.time()
+
+    def run(self, _):
+        if time() - self.start_time > 1: #1 second
+            self.start_time = time.time()
+            return True
+        else:
+            return False
+
+Stopwatch.type = 'stopwatch'
+Stopwatch.num_args = 0
+
+classes = [ AndGate, OrGate, NotGate, NandGate, XorGate, XNorGate, NorGate, ToggleButton, Stopwatch ]
 gate_types = dict(zip(map(lambda c: c.type, classes), classes))
 
 GATE_LIMIT = 1000
@@ -178,6 +208,11 @@ class WebsocketNamespace(BaseNamespace, BroadcastMixin):
             sim.move_gate(id_, new_x, new_y)
         except Exception as e:
             self.emit('error', { 'message': e.message })
+
+    def on_click(self, data):
+        id_ = int(data['id'])
+        if hasattr(sim.gates[id_], 'on_click'):
+            sim.gates[id_].on_click()
 
     def send_wire_update(self, from_gate_id, to_gate_id):
         self.broadcast_event('wire_updated', { 'from_gate_id': from_gate_id, 'to_gate_id': to_gate_id })

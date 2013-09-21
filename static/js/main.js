@@ -3,7 +3,8 @@ var c = new fabric.Canvas('c'),
 c.setWidth(1000)
 c.setHeight(500)
 
-gates = []
+gates = {}
+wires = []
 
 var uid = 100
 
@@ -24,7 +25,67 @@ gate_types = {
     }
 }
 
+function get_by_id(id) {
+    if (gates.hasOwnProperty(id))
+        return gates[id]
+}
+
+
+function calc_input_pos(g, input_num) {
+    var spaces = gate_types[g.type].args + 1,
+        space_height = g.shape.height / spaces
+    return {
+        x: g.shape.left - g.shape.width / 2,
+        y: g.shape.top - g.shape.height / 2 + space_height * input_num
+    }
+}
+
+function calc_output_pos(g) {
+    return {
+        x: g.shape.left + g.shape.width / 2,
+        y: g.shape.top //+ g.shape.height / 2
+    }
+}
+
+function create_wire_shape(w) {
+    var bgn_coords = calc_output_pos(w.begin),
+        end_coords = calc_input_pos(w.end, 1)
+    return new fabric.Line([ bgn_coords.x, bgn_coords.y, end_coords.x, end_coords.y ], {
+        fill: 'black',
+        stroke: 'black',
+        strokeWidth: 5,
+        selectable: false
+    })
+}
+
+function create_wire(g1, g2) {
+    w = {
+        begin: g1,
+        end: g2,
+    }
+    w.shape = create_wire_shape(w)
+    wires.push(w)
+    return w
+}
+
+function update_wires() {
+    for (var i = wires.length - 1; i >= 0; i--) {
+        var w = wires[i]
+        if (!gates.hasOwnProperty(w.begin.id) || !gates.hasOwnProperty(w.end.id)) {
+            console.log('delete wire')
+            wires.pop(i)
+        } else {
+            if (w.shape) {
+                c.remove(w.shape)
+            }
+            w.shape = create_wire_shape(w)
+            c.add(w.shape)
+        }
+    };
+}
+
 function update() {
+    update_wires()
     c.renderAll()
     fabric.util.requestAnimFrame(update, c.upperCanvasEl)
 }
@@ -36,7 +97,7 @@ function create_gate(type, x, y) {
         type: type,
         shape: gate_types[type].make_shape(x, y),
     }
-    gates.push(g)
+    gates[g.id] = g
     c.add(g.shape)
     return g
 }

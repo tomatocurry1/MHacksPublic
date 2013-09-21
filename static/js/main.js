@@ -9,6 +9,24 @@ var wires = {}
 
 var Gate = function() {}
 
+
+svgs = {}
+for (var op in [ 'and', 'or', 'not', 'nand', 'xor', 'xnor', 'nor' ]) {
+    fabric.loadSVGFromURL("images/" + op.toUpperCase() + ".svg", function(objects, options) {
+        svgs[op] = fabric.util.groupSVGElements(objects, options);
+    })
+}
+
+function get_svg_for_type(type, x, y) {
+    var g = svgs[type].clone()
+    g.set({
+        x: x,
+        y: y,
+        angle: 90
+    })
+}
+
+/*<<<<<<< HEAD
 var gate_type_to_graphic = {
     'and': function(x, y) {
         return new fabric.Triangle({
@@ -20,8 +38,54 @@ var gate_type_to_graphic = {
             angle: 90,
             hasControls: false
         })
+=======
+var AND_svg;
+var OR_svg;
+var NOT_svg;
+var NAND_svg;
+var XOR_svg;
+var XNOR_svg;
+var NOR_svg;
+    fabric.loadSVGFromURL("images/AND.svg",function(objects, options) {
+        AND_svg = fabric.util.groupSVGElements(objects, options);
+    });
+    fabric.loadSVGFromURL("images/OR_3.svg",function(objects, options) {
+        OR_svg = fabric.util.groupSVGElements(objects, options);
+    });
+    fabric.loadSVGFromURL("images/NOT.svg",function(objects, options) {
+        NOT_svg = fabric.util.groupSVGElements(objects, options);
+    });
+    fabric.loadSVGFromURL("images/NAND.svg",function(objects, options) {
+        NAND_svg = fabric.util.groupSVGElements(objects, options);
+    });
+    fabric.loadSVGFromURL("images/XOR_2.svg",function(objects, options) {
+        XOR_svg = fabric.util.groupSVGElements(objects, options);
+    });
+    fabric.loadSVGFromURL("images/XNOR_2.svg",function(objects, options) {
+        XNOR_svg = fabric.util.groupSVGElements(objects, options);
+    });
+    fabric.loadSVGFromURL("images/NOR_2.svg",function(objects, options) {
+        NOR_svg = fabric.util.groupSVGElements(objects, options);
+    });
+
+
+gate_types = {
+    'and': {
+        args: 2,
+        make_shape: function(x, y) {
+            return new fabric.Triangle({
+                top: y,
+                left: x,
+                fill: 'red',
+                width: 50,
+                height: 50,
+                angle: 90,
+                hasControls: false
+            })
+        }
+>>>>>>> a7ee849e6dedb4ab60c7b03c1866c8eae70bcf1e
     }
-}
+}*/
 
 Gate.prototype.update_with = function(serialized) {
     this.id = serialized['id']
@@ -29,7 +93,7 @@ Gate.prototype.update_with = function(serialized) {
     this.num_args = serialized['num_args']
     this.x = serialized['x']
     this.y = serialized['y']
-    this.shape = gate_type_to_graphic[this.type](this.x, this.y)
+    this.shape = get_svg_for_type(this.type, this.x, this.y)//gate_type_to_graphic[this.type](this.x, this.y)
     this.shape.left = serialized['x']
     this.shape.top = serialized['y']
     this.shape.gate_id = this.id
@@ -264,4 +328,3 @@ $('body').mousemove(function(event){
         unfinished_wire.shape.set({ 'x2': event.pageX, 'y2': event.pageY })
     }
 })
-

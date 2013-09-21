@@ -49,7 +49,7 @@ function calc_output_pos(g) {
 
 function create_wire_shape(w) {
     var bgn_coords = calc_output_pos(w.begin),
-        end_coords = calc_input_pos(w.end, 1)
+        end_coords = calc_input_pos(w.end, w.input_num + 1)
     return new fabric.Line([ bgn_coords.x, bgn_coords.y, end_coords.x, end_coords.y ], {
         fill: 'black',
         stroke: 'black',
@@ -59,13 +59,16 @@ function create_wire_shape(w) {
 }
 
 function create_wire(g1, g2) {
-    w = {
-        begin: g1,
-        end: g2,
+    if (g1 && g2 && g1 != g2) {
+        w = {
+            begin: g1,
+            end: g2,
+            input_num: find_number_wires(g2)
+        }
+        w.shape = create_wire_shape(w)
+        wires.push(w)
+        return w
     }
-    w.shape = create_wire_shape(w)
-    wires.push(w)
-    return w
 }
 
 function find_by_shape(shape) {
@@ -87,6 +90,9 @@ function update_wires() {
             if (w.shape) {
                 c.remove(w.shape)
             }
+            var new_input_num = find_number_wires(w.end)
+            if (new_input_num < w.input_num)
+                w.input_num = new_input_num
             w.shape = create_wire_shape(w)
             c.add(w.shape)
         }
@@ -118,15 +124,24 @@ function find_wire(begin, end) {
     };
 }
 
+function find_number_wires(end) {
+    var t = 0
+    for (var i = wires.length - 1; i >= 0; i--) {
+        if (wires[i].end == end)
+            t++
+    }
+    return t
+}
+
 var unfinished_wire = null
 $('body').keydown(function(event) {
-    console.log(event.keyCode)
     if (event.keyCode == 8 || event.keyCode == 46) { //backspace or delete
-        console.log(get_active())
-        if (get_active() != null) {
+        if (unfinished_wire != null) {
+            c.remove(unfinished_wire.shape)
+            unfinished_wire = null
+        } else if (get_active() != null) {
             for (var i = get_active().length - 1; i >= 0; i--) {
                 var shape = get_active()[i]
-                console.log(find_by_shape(shape).id)
                 delete gates[find_by_shape(shape).id]
                 c.remove(shape)
             }
@@ -146,9 +161,13 @@ $('body').keydown(function(event) {
             }
             c.add(unfinished_wire.shape)
         } else if (unfinished_wire != null && c.getActiveObject() && unfinished_wire.begin != c.getActiveObject()) {
-            create_wire(unfinished_wire.begin, find_by_shape(c.getActiveObject()))
-            c.remove(unfinished_wire.shape)
-            unfinished_wire = null
+            var end_shape = find_by_shape(c.getActiveObject())
+            if (find_number_wires(end_shape) < gate_types[end_shape.type].args) {
+                if (create_wire(unfinished_wire.begin, end_shape)) {
+                    c.remove(unfinished_wire.shape)
+                    unfinished_wire = null
+                }
+            }
         }
     }
 
@@ -156,7 +175,6 @@ $('body').keydown(function(event) {
 
 $('body').mousemove(function(event){
     if (unfinished_wire != null) {
-        console.log(unfinished_wire.shape.x1, unfinished_wire.shape.y1, unfinished_wire.shape.x2, unfinished_wire.shape.y2)
         unfinished_wire.shape.set({'x2': event.pageX, 'y2': event.pageY})
     }
 })

@@ -9,7 +9,7 @@ var wires = {}
 
 var Gate = function() {}
 
-gate_type_to_graphic = {
+var gate_type_to_graphic = {
     'and': function(x, y) {
         return new fabric.Triangle({
             left: x,
@@ -32,6 +32,7 @@ Gate.prototype.update_with = function(serialized) {
     this.shape = gate_type_to_graphic[this.type](this.x, this.y)
     this.shape.left = serialized['x']
     this.shape.top = serialized['y']
+    this.shape.gate_id = this.id
     this.on = serialized['state']
 }
 
@@ -45,30 +46,42 @@ var Wire = function() {
 }
 
 function calc_input_pos(g, input_num) {
-    var spaces = gate_types[g.type].args + 1
+    var spaces = g.num_args + 1
     var space_height = g.shape.height / spaces
     return {
-        x: g.shape.left - g.shape.width / 2,
-        y: g.shape.top - g.shape.height / 2 + space_height * input_num
+        x: g.x - g.shape.width / 2,
+        y: g.y - g.shape.height / 2 + space_height * input_num
     }
 }
 
 function calc_output_pos(g) {
     return {
-        x: g.shape.left + g.shape.width / 2,
-        y: g.shape.top //+ g.shape.height / 2
+        x: g.x + g.shape.width / 2,
+        y: g.y //+ g.shape.height / 2
     }
+}
+
+Wire.prototype.setup_shape = function() {
+    var n = find_number_wires(this.to_gate)
+    if (!this.hasOwnProperty('input_num') || this.input_num)
+        this.input_num = n
+
+    var op = calc_output_pos(this.from_gate)
+    var ip = calc_input_pos(this.to_gate, this.input_num + 1)
+    //this.to_gate.shape.fill = 'blue'
+    this.shape.set({
+        'x1': op.x,
+        'y1': op.y,
+        'x2': ip.x,
+        'y2': ip.y
+    })
 }
 
 Wire.prototype.update_with = function(from_gate_id, to_gate_id) {
     this.from_gate = gates[from_gate_id]
     this.to_gate = gates[to_gate_id]
-    this.shape.set({
-        'x1': this.from_gate.x + this.from_gate.shape.width / 2,
-        'y1': calc_output_pos(this.from_gate),
-        'x2': this.to_gate.x - this.to_gate.shape.width / 2,
-        'y2': calc_input_pos(this.to_gate, 1)
-    })
+
+    this.setup_shape()
 }
 
 socket.on('connect', function() {
@@ -90,7 +103,9 @@ socket.on('initial', function(data) {
     }
     for (var start in data['wires']) {
         if (data['wires'].hasOwnProperty(start)) {
-            wires[start] = data['wires'][start]
+            wires[start] = new Wire()
+            wires[start].update_with(start, data['wires'][start])
+            c.add(wires[start].shape)
         }
     }
 })
@@ -99,7 +114,6 @@ socket.on('gate_updated', function(data) {
     if (!gates.hasOwnProperty(data['id'])) {
         gates[data['id']] = new Gate()
         gates[data['id']].update_with(data)
-        console.log(gates[data['id']], gates[data['id']].update_with, gates[data['id']].shape)
         c.add(gates[data['id']].shape)
     } else {
         gates[data['id']].update_with(data)
@@ -107,69 +121,74 @@ socket.on('gate_updated', function(data) {
 })
 
 socket.on('gate_destroyed', function(data) {
-    c.remove(gates[data['id']].shape)
+    console.log('destroying gate cs', data['id'], gates[data['id']].shape)
+    //c.remove(gates[data['id']].shape) //would normally delete the shape here but we have to delete it earlier because reasons
     delete gates[data['id']]
 })
 
 socket.on('wire_updated', function(data) {
     if (!wires.hasOwnProperty(data['from_gate_id'])) {
-        gates[data['from_gate_id']] = new Wire()
-        gates[data['from_gate_id']].update_with(data['from_gate_id'], data['to_gate_id'])
-        c.add(gates[data['from_gate_id']].shape)
+        wires[data['from_gate_id']] = new Wire()
+        wires[data['from_gate_id']].update_with(data['from_gate_id'], data['to_gate_id'])
+        c.add(wires[data['from_gate_id']].shape)
+    } else {
+        wires[data['from_gate_id']].update_with(data['from_gate_id'], data['to_gate_id'])
     }
-    gates[data['from_gate_id']].update_with(data['from_gate_id'], data['to_gate_id'])
 })
 
 socket.on('wire_destroyed', function(data) {
-    c.remove(wires[data['from_gate_id']])
+    c.remove(wires[data['from_gate_id']].shape)
     delete wires[data['from_gate_id']]
 })
 
 function find_by_shape(shape) {
-    for (var id in gates) {
-        if (gates.hasOwnProperty(id) && gates[id].shape == shape) {
-            return gates[id]
-        }
-    }
+    return gates[shape.gate_id]
 }
 
-function save_pos() {
-    var pos = {}
-    for (var id in gates) {
-        if (gates.hasOwnProperty(id)) {
-            pos[id] = { 'x': gates[id].shape.left, 'y': gates[id].shape.top }
-        }
-    }
-    return pos
-}
-
-function check_pos_move(old_pos) {
-    for (var id in gates) {
-        if (gates.hasOwnProperty(id) && old_pos.hasOwnProperty(id)) {
-            if (gates[id].shape.left != old_pos[id]['x'] || gates[id].shape.top != old_pos[id]['y']) {
-                console.log('emit move', gates[id])
-                socket.emit('move', { 'id': id, 'x': gates[id].shape.left, 'y': gates[id].shape.top })
+function update_wires() {
+    for (var start in wires) {
+        if (wires.hasOwnProperty(start)) {
+            var new_input_num = find_number_wires(wires[start].to_gate)
+            if (new_input_num < wires[start].input_num){
+                wires[start].input_num = new_input_num
+                wires[start].setup_shape()
             }
         }
     }
-    check_pos = false
-} 
+}
 
-var pos = null
-var last_pos_update = 0
 function update() {
-    if (pos && +new Date() - last_pos_update > 50) {
-        check_pos_move(pos)
-        last_pos_update = +new Date()
-    }
-    pos = save_pos()
     if (c.getActiveGroup() != null) {
         c.getActiveGroup().hasControls = false
     }
+    update_wires()
     c.renderAll()
     fabric.util.requestAnimFrame(update, c.upperCanvasEl)
 }
 fabric.util.requestAnimFrame(update, c.upperCanvasEl)
+
+function moved(position, gate) {
+    gate.x = position['x']
+    gate.y = position['y']
+    socket.emit('move', { 'id': gate.id, 'x': gate.x, 'y': gate.y })
+}
+
+c.on('object:moving', function(e) {
+    //console.log(e)
+    if (e.target.hasOwnProperty('gate_id')) {
+        moved({ 'x': e.target.left, 'y': e.target.top }, gates[e.target.gate_id])
+    } else if (e.target.hasOwnProperty('_objects')) {
+        console.log(e.target)
+        for (var i = e.target._objects.length - 1; i >= 0; i--) {
+            if (e.target._objects[i].hasOwnProperty('gate_id')) {
+                moved({
+                    'x': e.target._objects[i].left /*+ e.target.width / 2*/ + e.target.left,
+                    'y': e.target._objects[i].top /*+ e.target.height / 2*/ + e.target.top
+                }, gates[e.target._objects[i].gate_id])
+            }
+        }
+    }
+})
 
 function get_active() {
     if (c.getActiveObject() != null)
@@ -205,7 +224,9 @@ $('body').keydown(function(event) {
             unfinished_wire = null
         } else if (get_active() != null) {
             for (var i = get_active().length - 1; i >= 0; i--) {
+                console.log(find_by_shape(get_active()[i]).id)
                 socket.emit('destroy_gate', { 'id': find_by_shape(get_active()[i]).id })
+                c.remove(get_active()[i]) //ugly ass hack because it can't be deleted later because reasons
             }
         }
     } else if (event.keyCode == 67) { //c
@@ -225,7 +246,7 @@ $('body').keydown(function(event) {
             }
             c.add(unfinished_wire.shape)
         } else if (unfinished_wire != null && active && unfinished_wire.begin != active_object) {
-            if (find_number_wires(active_object) < gate_types[active_object.type].args) {
+            if (find_number_wires(active_object) < active_object.num_args) {
                 socket.emit('wire_connect', {
                     'from_gate_id': unfinished_wire.begin.id,
                     'to_gate_id': active_object.id

@@ -22,7 +22,8 @@ class Gate(object):
             'type': self.type,
             'num_args': self.num_args,
             'id': self.id,
-            'x': self.x, 'y': self.y, 'state': self.on }
+            'x': self.x, 'y': self.y, 'state': self.on
+        }
 
 class AndGate(Gate):
     def __init__(self, id_, x, y):
@@ -38,8 +39,7 @@ gate_types = { AndGate.type : AndGate }
 
 GATE_LIMIT = 1000
 class Simulation(object):
-    def __init__(self, ws):
-        self.ws = ws
+    def __init__(self):
         self.gates = {}
         self.wires = {}
         self.uid = 0
@@ -51,25 +51,31 @@ class Simulation(object):
     def create_gate(self, type_, x, y):
         if len(self.gates) >= GATE_LIMIT:
             raise Exception('Too many gates, delete some')
-        self.uid += 1
         self.gates[self.uid] = gate_types[type_](self.uid, x, y)
         self.ws.send_gate_update(self.gates[self.uid].serialize())
+        self.uid += 1
 
     def destroy_gate(self, id_):
-        for s, e in self.wires.items():
-            if s == id_ or e == id_:
-                ws.send_wire_destroy(s, e)
-        ws.send_gate_destroy(id_)
+        if id_ in self.gates:
+            for s, e in self.wires.items():
+                if s == id_ or e == id_:
+                    del self.wires[s]
+                    self.ws.send_wire_destroy(s, e)
+            del self.gates[id_]
+            self.ws.send_gate_destroy(id_)
+        else:
+            print 'Got id {0}, which is not in {1}'.format(id_, self.gates.keys())
 
     def move_gate(self, id_, new_x, new_y):
-        if id_ not in self.gates:
-            raise Exception('No such gate {0} {1}'.format(id_, self.gates))
+        print 'move', new_x, new_y
+        if id_ not in self.gates.keys():
+            raise Exception('No such gate {0} in {1} {2}'.format(id_, self.gates, id_ in self.gates.keys()))
         self.gates[id_].x = new_x
         self.gates[id_].y = new_y
         self.ws.send_gate_update(self.gates[id_].serialize())
         for s, e in self.wires.items():
             if s == id_ or e == id_:
-                ws.send_wire_update(s, e)
+                self.ws.send_wire_update(s, e)
 
     def serialize(self):
         return {
@@ -77,43 +83,43 @@ class Simulation(object):
             'wires': self.wires
         }
 
+sim = Simulation()
 
 class WebsocketNamespace(BaseNamespace, BroadcastMixin):
-    def __init__(self, *args, **kwargs):
-        super(WebsocketNamespace, self).__init__(*args, **kwargs)
-        self.sim = Simulation(self)
-
     def initalize(self):
         print 'initalize'
 
     def on_join(self, data):
-        self.emit('initial', self.sim.serialize())
+        sim.ws = self
+        print sim.serialize()
+        self.emit('initial', sim.serialize())
 
     def on_create_gate(self, data):
         try:
-            type_, x, y = data['type'], data['x'], data['y']
-            self.sim.create_gate(type_, x, y)
+            type_, x, y = data['type'], int(data['x']), int(data['y'])
+            sim.create_gate(type_, x, y)
         except Exception as e:
             print e, e.message
             self.emit('error', { 'message': e.message })
 
     def on_destroy_gate(self, data):
-        id_ = data['id']
-        self.sim.destroy_gate(id_)
+        id_ = int(data['id'])
+        print 'destroy gate', id_
+        sim.destroy_gate(id_)
 
     def on_wire_connect(self, data):
-        from_gate_id, to_gate_id = data['from_gate_id'], data['to_gate_id']
-        self.sim.create_wire(from_gate_id, to_gate_id)
+        from_gate_id, to_gate_id = int(data['from_gate_id']), int(data['to_gate_id'])
+        sim.create_wire(from_gate_id, to_gate_id)
 
     def on_move(self, data):
         try:
-            id_, new_x, new_y = data['id'], data['x'], data['y']
-            self.sim.move_gate(id_, new_x, new_y)
+            id_, new_x, new_y = int(data['id']), int(data['x']), int(data['y'])
+            sim.move_gate(id_, new_x, new_y)
         except Exception as e:
             self.emit('error', { 'message': e.message })
 
     def send_wire_update(self, from_gate_id, to_gate_id):
-        self.broadcast_event('wire_created', { 'from_gate_id': from_gate_id, 'to_gate_id': to_gate_id })
+        self.broadcast_event('wire_updated', { 'from_gate_id': from_gate_id, 'to_gate_id': to_gate_id })
 
     def send_wire_destroy(self, start, end):
         self.broadcast_event('wire_destroyed', { 'from_gate_id': start, 'to_gate_id': end })

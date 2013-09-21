@@ -7,6 +7,8 @@ wires = []
 
 var uid = 100
 
+var socket = io.connect()
+
 gate_types = {
     'and': {
         args: 2,
@@ -64,7 +66,7 @@ function create_wire_shape(w) {
     return w.shape
 }
 
-function create_wire(g1, g2) {
+function create_wire(g1, g2, supress_packet) {
     if (g1 && g2 && g1 != g2) {
         w = {
             begin: g1,
@@ -73,8 +75,26 @@ function create_wire(g1, g2) {
         }
         w.shape = create_wire_shape(w)
         wires.push(w)
+        if (!supress_packet) {
+            socket.emit('wire_connect', { 'id1': g1.id, 'id2': g2.id })
+        }
         return w
     }
+}
+
+function create_gate(type, x, y, id) {
+    var g = {
+        id: id || uid++,
+        type: type,
+        shape: gate_types[type].make_shape(x, y)
+    }
+    g.shape.set({ 'onChange': function() { check_pos = true; console.log('onChange') } })
+    gates[g.id] = g
+    c.add(g.shape)
+    if (!id) { //if an id was passed, it was created by a websocket, so we shouldnt recreate it
+        socket.emit('create', { 'type': type, 'id': g.id, 'x': x, 'y': y })
+    }
+    return g
 }
 
 function find_by_shape(shape) {
@@ -101,7 +121,36 @@ function update_wires() {
     };
 }
 
+function save_pos() {
+    var pos = {}
+    for (var id in gates) {
+        if (gates.hasOwnProperty(id)) {
+            pos[id] = { 'x': gates[id].shape.left, 'y': gates[id].shape.top }
+        }
+    }
+    return pos
+}
+
+function check_pos_move(old_pos) {
+    for (var id in gates) {
+        if (gates.hasOwnProperty(id) && old_pos.hasOwnProperty(id)) {
+            if (gates[id].shape.left != old_pos[id]['x'] || gates[id].shape.top != old_pos[id]['y']) {
+                console.log('emit move', gates[id])
+                socket.emit('move', { 'id': id, 'x': gates[id].shape.left, 'y': gates[id].shape.top })
+            }
+        }
+    }
+    check_pos = false
+} 
+
+var pos = null
+var last_pos_update = 0
 function update() {
+    if (pos && +new Date() - last_pos_update > 50) {
+        check_pos_move(pos)
+        last_pos_update = +new Date()
+    }
+    pos = save_pos()
     if (c.getActiveGroup() != null) {
         c.getActiveGroup().hasControls = false
     }
@@ -146,7 +195,10 @@ $('body').keydown(function(event) {
         } else if (get_active() != null) {
             for (var i = get_active().length - 1; i >= 0; i--) {
                 var shape = get_active()[i]
-                delete gates[find_by_shape(shape).id]
+                var object = find_by_shape(shape)
+                console.log('destroy ', object.id)
+                socket.emit('destroy', { 'id': object.id })
+                delete gates[object.id]
                 c.remove(shape)
             }
         }
@@ -186,14 +238,47 @@ $('body').mousemove(function(event){
     }
 })
 
-function create_gate(type, x, y) {
-    var g = {
-        id: uid++,
-        type: type,
-        shape: gate_types[type].make_shape(x, y)
-    }
-    gates[g.id] = g
-    c.add(g.shape)
-    return g
-}
+socket.on('connect', function() {
+    socket.emit('join', {})
+})
 
+socket.on('gate_status', function(data) {
+    console.log('wire connect', data)
+    for (var id in data) {
+        if (data.hasOwnProperty(id)) {
+            create_gate(data[id]['type'], data[id]['x'], data[id]['y'], id)
+        }
+    }
+})
+
+socket.on('wire_status', function(data) {
+    for (var output in data) {
+        if (data.hasOwnProperty(output)) {
+            create_wire(gates[output], gates[data[output]], true)
+        }
+    }
+})
+
+socket.on('create', function(data) {
+    create_gate(data['type'], data['x'], data['y'], data['id'])
+})
+
+socket.on('destroy', function(data) {
+    console.log('destroy packet', data)
+    if (gates.hasOwnProperty(data['id'])) {
+        c.remove(gates[data['id']].shape)
+        delete gates[data['id']]
+    }
+})
+
+socket.on('wire_connect', function(data) {
+    create_wire(gates[data['id1']], gates[data['id2']], true)
+})
+
+socket.on('move', function(data) {
+    if (gates.hasOwnProperty(data['id'])) {
+        gates[data['id']].shape.left = data['x']
+        gates[data['id']].shape.top = data['y']
+        pos = null
+    }
+})

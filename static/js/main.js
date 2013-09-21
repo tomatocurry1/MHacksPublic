@@ -47,15 +47,21 @@ function calc_output_pos(g) {
     }
 }
 
-function create_wire_shape(w) {
+function set_wire_line_pos(w) {
     var bgn_coords = calc_output_pos(w.begin),
         end_coords = calc_input_pos(w.end, w.input_num + 1)
-    return new fabric.Line([ bgn_coords.x, bgn_coords.y, end_coords.x, end_coords.y ], {
+    w.shape.set({ 'x1': bgn_coords.x, 'y1': bgn_coords.y, 'x2': end_coords.x, 'y2': end_coords.y })
+}
+
+function create_wire_shape(w) {
+    w.shape = new fabric.Line([ 0, 0, 0, 0 ], {
         fill: 'black',
         stroke: 'black',
-        strokeWidth: 5,
-        selectable: false
+        strokeWidth: 5
     })
+    set_wire_line_pos(w)
+    c.add(w.shape)
+    return w.shape
 }
 
 function create_wire(g1, g2) {
@@ -87,14 +93,10 @@ function update_wires() {
             c.remove(wires[i].shape)
             wires.pop(i)
         } else {
-            if (w.shape) {
-                c.remove(w.shape)
-            }
             var new_input_num = find_number_wires(w.end)
             if (new_input_num < w.input_num)
                 w.input_num = new_input_num
-            w.shape = create_wire_shape(w)
-            c.add(w.shape)
+            set_wire_line_pos(w)
         }
     };
 }

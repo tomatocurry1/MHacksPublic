@@ -1,5 +1,4 @@
 var c = new fabric.Canvas('c')
-var cEl = $(c.upperCanvasEl)
 c.setWidth(1000)
 c.setHeight(500)
 
@@ -48,8 +47,8 @@ function calc_output_pos(g) {
 }
 
 function set_wire_line_pos(w) {
-    var bgn_coords = calc_output_pos(w.begin),
-        end_coords = calc_input_pos(w.end, w.input_num + 1)
+    var bgn_coords = calc_output_pos(w.begin)
+    var end_coords = calc_input_pos(w.end, w.input_num + 1)
     w.shape.set({ 'x1': bgn_coords.x, 'y1': bgn_coords.y, 'x2': end_coords.x, 'y2': end_coords.y })
 }
 
@@ -156,6 +155,7 @@ $('body').keydown(function(event) {
         var active_object = undefined
         if (active)
             active_object = find_by_shape(active)
+
         if (unfinished_wire == null && active != null && find_wire(active_object, undefined) == null) {
             var coords = calc_output_pos(active_object)
             unfinished_wire = {
@@ -182,7 +182,7 @@ $('body').keydown(function(event) {
 
 $('body').mousemove(function(event){
     if (unfinished_wire != null) {
-        unfinished_wire.shape.set({'x2': event.pageX, 'y2': event.pageY})
+        unfinished_wire.shape.set({ 'x2': event.pageX, 'y2': event.pageY })
     }
 })
 
@@ -190,7 +190,7 @@ function create_gate(type, x, y) {
     var g = {
         id: uid++,
         type: type,
-        shape: gate_types[type].make_shape(x, y),
+        shape: gate_types[type].make_shape(x, y)
     }
     gates[g.id] = g
     c.add(g.shape)

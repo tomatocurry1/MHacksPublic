@@ -1,5 +1,5 @@
-var c = new fabric.Canvas('c'),
-    cEl = $(c.upperCanvasEl)
+var c = new fabric.Canvas('c')
+var cEl = $(c.upperCanvasEl)
 c.setWidth(1000)
 c.setHeight(500)
 
@@ -32,8 +32,8 @@ function get_by_id(id) {
 
 
 function calc_input_pos(g, input_num) {
-    var spaces = gate_types[g.type].args + 1,
-        space_height = g.shape.height / spaces
+    var spaces = gate_types[g.type].args + 1
+    var space_height = g.shape.height / spaces
     return {
         x: g.shape.left - g.shape.width / 2,
         y: g.shape.top - g.shape.height / 2 + space_height * input_num
@@ -57,7 +57,8 @@ function create_wire_shape(w) {
     w.shape = new fabric.Line([ 0, 0, 0, 0 ], {
         fill: 'black',
         stroke: 'black',
-        strokeWidth: 5
+        strokeWidth: 5,
+        selectable: false
     })
     set_wire_line_pos(w)
     c.add(w.shape)
@@ -102,6 +103,9 @@ function update_wires() {
 }
 
 function update() {
+    if (c.getActiveGroup() != null) {
+        c.getActiveGroup().hasControls = false
+    }
     update_wires()
     c.renderAll()
     fabric.util.requestAnimFrame(update, c.upperCanvasEl)
@@ -119,11 +123,10 @@ function get_active() {
 
 function find_wire(begin, end) {
     for (var i = wires.length - 1; i >= 0; i--) {
-        if (begin && wires[i].begin == begin)
+        if ((begin && wires[i].begin == begin) || (end && wires[i].end == end))
             return wires[i]
-        else if (end && wires[i].end == end)
-            return wires[i]
-    };
+    }
+    return null
 }
 
 function find_number_wires(end) {
@@ -149,11 +152,14 @@ $('body').keydown(function(event) {
             }
         }
     } else if (event.keyCode == 67) { //c
-        if (unfinished_wire == null && c.getActiveObject() != null && !find_wire(c.getActiveObject(), undefined)) {
-            var begin_obj = find_by_shape(c.getActiveObject()),
-                coords = calc_output_pos(begin_obj)
+        var active = c.getActiveObject()
+        var active_object = undefined
+        if (active)
+            active_object = find_by_shape(active)
+        if (unfinished_wire == null && active != null && find_wire(active_object, undefined) == null) {
+            var coords = calc_output_pos(active_object)
             unfinished_wire = {
-                begin: begin_obj,
+                begin: active_object,
                 shape: new fabric.Line([ coords.x, coords.y, 0, 0 ], {
                     fill: 'blue',
                     stroke: 'blue',
@@ -162,10 +168,9 @@ $('body').keydown(function(event) {
                 })
             }
             c.add(unfinished_wire.shape)
-        } else if (unfinished_wire != null && c.getActiveObject() && unfinished_wire.begin != c.getActiveObject()) {
-            var end_shape = find_by_shape(c.getActiveObject())
-            if (find_number_wires(end_shape) < gate_types[end_shape.type].args) {
-                if (create_wire(unfinished_wire.begin, end_shape)) {
+        } else if (unfinished_wire != null && active && unfinished_wire.begin != active_object) {
+            if (find_number_wires(active_object) < gate_types[active_object.type].args) {
+                if (create_wire(unfinished_wire.begin, active_object)) {
                     c.remove(unfinished_wire.shape)
                     unfinished_wire = null
                 }

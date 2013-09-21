@@ -35,7 +35,68 @@ class AndGate(Gate):
 AndGate.type = 'and'
 AndGate.num_args = 2
 
-gate_types = { AndGate.type : AndGate }
+class OrGate(Gate):
+    def __init__(self, id_, x, y):
+        super(OrGate, self).__init__(id_, x, y)
+
+    def run(self, inputs):
+        return any(inputs)
+
+OrGate.type = 'or'
+OrGate.num_args = 2
+
+class NotGate(Gate):
+    def __init__(self, id_, x, y):
+        super(NotGate, self).__init__(id_, x, y)
+
+    def run(self, inputs):
+        return not inputs[0]
+        
+NotGate.type = 'not'
+NotGate.num_args = 1
+
+class NandGate(Gate):
+    def __init__(self, id_, x, y):
+        super(NandGate, self).__init__(id_, x, y)
+
+    def run(self, inputs):
+        return not all(inputs)
+        
+NandGate.type = 'nand'
+NandGate.num_args = 2
+
+class XorGate(Gate):
+    def __init__(self, id_, x, y):
+        super(XorGate, self).__init__(id_, x, y)
+
+    def run(self, inputs):
+        return inputs[0] != inputs[1]
+        
+XorGate.type = 'xor'
+XorGate.num_args = 2
+
+class XNorGate(Gate):
+    def __init__(self, id_, x, y):
+        super(XNorGate, self).__init__(id_, x, y)
+
+    def run(self, inputs):
+        return inputs[0] == inputs[1]
+        
+XNorGate.type = 'xnor'
+XNorGate.num_args = 2
+
+class NorGate(Gate):
+    def __init__(self, id_, x, y):
+        super(NorGate, self).__init__(id_, x, y)
+
+    def run(self, inputs):
+        return not any(inputs)
+        
+NorGate.type = 'nor'
+NorGate.num_args = 2
+
+classes = [ AndGate, OrGate, NotGate, NandGate, XorGate, XNorGate, NorGate ]
+gate_types = dict(zip(map(lambda c: c.type, classes), classes))
 
 GATE_LIMIT = 1000
 class Simulation(object):

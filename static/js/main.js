@@ -11,81 +11,26 @@ var Gate = function() {}
 
 
 svgs = {}
-for (var op in [ 'and', 'or', 'not', 'nand', 'xor', 'xnor', 'nor' ]) {
-    fabric.loadSVGFromURL("images/" + op.toUpperCase() + ".svg", function(objects, options) {
-        svgs[op] = fabric.util.groupSVGElements(objects, options);
-    })
+ops = [ 'and', 'or', 'not', 'nand', 'xor', 'xnor', 'nor' ]
+for (var i = ops.length - 1; i >= 0; i--) {
+    fabric.loadSVGFromURL("images/" + ops[i].toUpperCase() + ".svg", (function(index){ 
+        return function(objects, options) {
+            svgs[ops[index]] = fabric.util.groupSVGElements(objects, options)
+        }
+    })(i))
 }
 
 function get_svg_for_type(type, x, y) {
-    var g = svgs[type].clone()
+    var g = fabric.util.object.clone(svgs[type])
     g.set({
         x: x,
         y: y,
-        angle: 90
+        width: 50,
+        height: 50,
+        hasControls: false
     })
+    return g
 }
-
-/*<<<<<<< HEAD
-var gate_type_to_graphic = {
-    'and': function(x, y) {
-        return new fabric.Triangle({
-            left: x,
-            top: y,
-            fill: 'red',
-            width: 50,
-            height: 50,
-            angle: 90,
-            hasControls: false
-        })
-=======
-var AND_svg;
-var OR_svg;
-var NOT_svg;
-var NAND_svg;
-var XOR_svg;
-var XNOR_svg;
-var NOR_svg;
-    fabric.loadSVGFromURL("images/AND.svg",function(objects, options) {
-        AND_svg = fabric.util.groupSVGElements(objects, options);
-    });
-    fabric.loadSVGFromURL("images/OR_3.svg",function(objects, options) {
-        OR_svg = fabric.util.groupSVGElements(objects, options);
-    });
-    fabric.loadSVGFromURL("images/NOT.svg",function(objects, options) {
-        NOT_svg = fabric.util.groupSVGElements(objects, options);
-    });
-    fabric.loadSVGFromURL("images/NAND.svg",function(objects, options) {
-        NAND_svg = fabric.util.groupSVGElements(objects, options);
-    });
-    fabric.loadSVGFromURL("images/XOR_2.svg",function(objects, options) {
-        XOR_svg = fabric.util.groupSVGElements(objects, options);
-    });
-    fabric.loadSVGFromURL("images/XNOR_2.svg",function(objects, options) {
-        XNOR_svg = fabric.util.groupSVGElements(objects, options);
-    });
-    fabric.loadSVGFromURL("images/NOR_2.svg",function(objects, options) {
-        NOR_svg = fabric.util.groupSVGElements(objects, options);
-    });
-
-
-gate_types = {
-    'and': {
-        args: 2,
-        make_shape: function(x, y) {
-            return new fabric.Triangle({
-                top: y,
-                left: x,
-                fill: 'red',
-                width: 50,
-                height: 50,
-                angle: 90,
-                hasControls: false
-            })
-        }
->>>>>>> a7ee849e6dedb4ab60c7b03c1866c8eae70bcf1e
-    }
-}*/
 
 Gate.prototype.update_with = function(serialized) {
     this.id = serialized['id']
@@ -93,7 +38,7 @@ Gate.prototype.update_with = function(serialized) {
     this.num_args = serialized['num_args']
     this.x = serialized['x']
     this.y = serialized['y']
-    this.shape = get_svg_for_type(this.type, this.x, this.y)//gate_type_to_graphic[this.type](this.x, this.y)
+    this.shape = get_svg_for_type(this.type, this.x, this.y)
     this.shape.left = serialized['x']
     this.shape.top = serialized['y']
     this.shape.gate_id = this.id
@@ -127,11 +72,11 @@ function calc_output_pos(g) {
 
 Wire.prototype.setup_shape = function() {
     var n = find_number_wires(this.to_gate)
-    if (!this.hasOwnProperty('input_num') || this.input_num)
+    if (!this.hasOwnProperty('input_num') || this.input_num > n)
         this.input_num = n
 
     var op = calc_output_pos(this.from_gate)
-    var ip = calc_input_pos(this.to_gate, this.input_num + 1)
+    var ip = calc_input_pos(this.to_gate, this.input_num)
     //this.to_gate.shape.fill = 'blue'
     this.shape.set({
         'x1': op.x,
@@ -273,9 +218,11 @@ function find_wire(begin, end) {
 
 function find_number_wires(end) {
     var t = 0
-    for (var i = wires.length - 1; i >= 0; i--) {
-        if (wires[i].end == end)
-            t++
+    for (var start in wires) {
+        if (wires.hasOwnProperty(start)){
+            if (wires[start].to_gate == end)
+                t++
+        }
     }
     return t
 }
@@ -310,6 +257,7 @@ $('body').keydown(function(event) {
             }
             c.add(unfinished_wire.shape)
         } else if (unfinished_wire != null && active && unfinished_wire.begin != active_object) {
+            console.log(find_number_wires(active_object))
             if (find_number_wires(active_object) < active_object.num_args) {
                 socket.emit('wire_connect', {
                     'from_gate_id': unfinished_wire.begin.id,

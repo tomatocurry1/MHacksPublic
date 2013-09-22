@@ -1,6 +1,8 @@
 import flask
 import sys
+import threading
 import time
+import traceback
 import werkzeug.serving
 import werkzeug.debug
 from socketio import socketio_manage
@@ -99,12 +101,12 @@ NorGate.num_args = 2
 class ToggleButton(Gate):
     def __init__(self, id_, x, y):
         super(ToggleButton, self).__init__(id_, x, y)
-        self.on = False
 
     def run(self, _):
         return self.on
 
     def on_click(self):
+        print 'click', not self.on
         self.on = not self.on
 
 ToggleButton.type = 'toggle'
@@ -116,7 +118,7 @@ class Stopwatch(Gate):
         self.start_time = time.time()
 
     def run(self, _):
-        if time() - self.start_time > 1: #1 second
+        if time.time() - self.start_time > 1: #1 second
             self.start_time = time.time()
             return True
         else:
@@ -125,7 +127,51 @@ class Stopwatch(Gate):
 Stopwatch.type = 'stopwatch'
 Stopwatch.num_args = 0
 
-classes = [ AndGate, OrGate, NotGate, NandGate, XorGate, XNorGate, NorGate, ToggleButton, Stopwatch ]
+class Splitter(Gate):
+    def __init__(self, id_, x, y, parent = None):
+        super(Splitter, self).__init__(id_, x, y)
+        self.parent = parent
+        if parent:
+            self.child = None
+        else:
+            sim.uid += 1
+            self.child = sim.create_gate('splitter', x, y + 25, parent = self)
+            print 'made child'
+
+    def run(self, input):
+        if self.parent:
+            return self.parent.on
+        else:
+            return input[0]
+
+    def serialize(self):
+        d = super(Splitter, self).serialize()
+        if self.parent:
+            d['parent'] = self.parent
+        else:
+            d['child'] = self.child
+
+ 
+    # @property
+    # def num_args(self):
+    #     return 1 # if self.child is not None else 0
+    
+
+Splitter.type = 'splitter'
+Splitter.num_args = 1
+
+classes = [
+    AndGate,
+    OrGate,
+    NotGate,
+    NandGate,
+    XorGate,
+    XNorGate,
+    NorGate,
+    ToggleButton,
+    Stopwatch,
+    Splitter
+]
 gate_types = dict(zip(map(lambda c: c.type, classes), classes))
 
 GATE_LIMIT = 1000
@@ -139,12 +185,13 @@ class Simulation(object):
         self.wires[from_gate_id] = to_gate_id
         self.ws.send_wire_update(from_gate_id, to_gate_id)
 
-    def create_gate(self, type_, x, y):
+    def create_gate(self, type_, x, y, **kwargs):
         if len(self.gates) >= GATE_LIMIT:
             raise Exception('Too many gates, delete some')
-        self.gates[self.uid] = gate_types[type_](self.uid, x, y)
+        self.gates[self.uid] = gate_types[type_](self.uid, x, y, **kwargs)
         self.ws.send_gate_update(self.gates[self.uid].serialize())
         self.uid += 1
+        return self.gates[self.uid - 1]
 
     def destroy_gate(self, id_):
         if id_ in self.gates:
@@ -190,8 +237,9 @@ class WebsocketNamespace(BaseNamespace, BroadcastMixin):
             type_, x, y = data['type'], int(data['x']), int(data['y'])
             sim.create_gate(type_, x, y)
         except Exception as e:
-            print e, e.message
-            self.emit('error', { 'message': e.message })
+            tb = traceback.format_exc()
+            print tb
+            self.emit('error', { 'message': e.message, 'tb': tb })
 
     def on_destroy_gate(self, data):
         id_ = int(data['id'])
@@ -211,8 +259,11 @@ class WebsocketNamespace(BaseNamespace, BroadcastMixin):
 
     def on_click(self, data):
         id_ = int(data['id'])
-        if hasattr(sim.gates[id_], 'on_click'):
+        if id_ in sim.gates and hasattr(sim.gates[id_], 'on_click'):
             sim.gates[id_].on_click()
+
+    def on_ping(self, data):
+        self.emit('sim_ping', { g.id : g.on for g in sim.gates.values() })
 
     def send_wire_update(self, from_gate_id, to_gate_id):
         self.broadcast_event('wire_updated', { 'from_gate_id': from_gate_id, 'to_gate_id': to_gate_id })
@@ -225,7 +276,6 @@ class WebsocketNamespace(BaseNamespace, BroadcastMixin):
 
     def send_gate_destroy(self, id_):
         self.broadcast_event('gate_destroyed', { 'id': id_ })
-
 
 
 class DebuggedApplicationFix(werkzeug.debug.DebuggedApplication): #the debugger doesn't work with ws: http://stackoverflow.com/a/18552263/1159735
@@ -254,5 +304,23 @@ def run_dev_server():
     server = SocketIOServer(('' if len(sys.argv) == 1 else sys.argv[1], port), dapp, resource="socket.io")
     server.serve_forever()
 
+TICK_TIME_SECONDS = .5
+def background_simulate():
+    while True:
+        start = time.time()
+        for g in sim.gates.values():
+            print 'processing', g.id,
+            inputs = map(lambda t: sim.gates[t[0]], filter(lambda t: t[1] == g.id, sim.wires.items()))
+            if len(inputs) == g.num_args:
+                g.on = g.run(map(lambda i: i.on, inputs))
+            print len(inputs), len(inputs) == g.num_args, g.on
+
+        sleeptime = TICK_TIME_SECONDS - time.time() + start
+        if sleeptime > 0:
+            time.sleep(sleeptime)
+
 if __name__ == '__main__':
+    t = threading.Thread(target=background_simulate, args=())
+    t.daemon = True
+    t.start()
     run_dev_server()

@@ -26,6 +26,12 @@ fabric.loadSVGFromURL("images/circle.svg", function(objects, options) {
 fabric.loadSVGFromURL("images/stopwatch.svg", function(objects, options) {
     svgs['stopwatch'] = fabric.util.groupSVGElements(objects, options)
 })
+fabric.loadSVGFromURL("images/circle.svg", function(objects, options) {
+    svgs['splitter'] = fabric.util.groupSVGElements(objects, options).set({
+        scaleX: 0.5,
+        scaleY: 0.5
+    })
+})
 
 function get_svg_for_type(type, x, y) {
     var g = fabric.util.object.clone(svgs[type])
@@ -106,6 +112,7 @@ socket.on('connect', function() {
 
 socket.on('error', function(data) {
     console.log('error:', data['message'])
+    console.log(data['tb'])
 })
 
 socket.on('initial', function(data) {
@@ -127,11 +134,19 @@ socket.on('initial', function(data) {
 })
 
 socket.on('gate_updated', function(data) {
+    console.log('called ' + JSON.stringify(data))
     if (!gates.hasOwnProperty(data['id'])) {
+        console.log('new gate ' + data)
         gates[data['id']] = new Gate()
         gates[data['id']].update_with(data)
         c.add(gates[data['id']].shape)
     } else {
+        var g = gates[data['id']]
+        if (g.type == 'splitter') {
+            var other = !g.parent ? g.child : g.parent
+            other.shape.left += (data.x - g.x)
+            other.shape.top += (data.y - g.y)
+        }
         gates[data['id']].update_with(data)
     }
 })
@@ -173,15 +188,48 @@ function update_wires() {
     }
 }
 
+var last_ping = 0
 function update() {
     if (c.getActiveGroup() != null) {
         c.getActiveGroup().hasControls = false
     }
     update_wires()
+    if (+new Date() - last_ping > 500) {
+        last_ping = +new Date()
+        socket.emit('ping', {})
+    }
     c.renderAll()
     fabric.util.requestAnimFrame(update, c.upperCanvasEl)
 }
 fabric.util.requestAnimFrame(update, c.upperCanvasEl)
+
+function color_svg(shape, color) {
+    if (shape.isSameColor && shape.isSameColor() || !shape.paths) {
+        shape.setFill(color);
+    } else if (shape.paths) {
+        for (var i = 0; i < shape.paths.length; i++) {
+            shape.paths[i].setFill(color);
+        }
+    }
+}
+
+socket.on('sim_ping', function(data) {
+    //console.log(data)
+    for (var id in data) {
+        if (data.hasOwnProperty(id)) {
+            if (gates[id]){
+                if (data[id]) {
+                    color_svg(gates[id].shape, 'red')
+                } else {
+                    color_svg(gates[id].shape, 'black')
+                }
+            } else {
+                console.log("Got bad gate id " + id)
+            }
+        }
+    }
+    c.renderAll()
+})
 
 function moved(position, gate) {
     gate.x = position['x']
@@ -207,7 +255,7 @@ c.on('object:moving', function(e) {
 })
 
 c.on('mouse:down', function(e) {
-    if (e.target.hasOwnProperty('gate_id')) {
+    if (e.target && e.target.hasOwnProperty('gate_id')) {
         socket.emit('click', { 'id': e.target.gate_id })
     }
 })

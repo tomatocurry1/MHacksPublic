@@ -2,9 +2,28 @@
 <html>
     <head>
         <title>MHacks things</title>
+        <style type="text/css">
+        .container {
+            width: 1000;
+            height: 520;
+            position: absolute;
+            top: 50%; left: 50%;
+            margin-left: -500px; /* (width + padding)/2 */
+            margin-top: -260px; /* (height + padding)/2 */
+        }
+
+        #c {
+            border: 5px solid black;
+        }
+        </style>
     </head>
     <body>
-        <canvas id='c'>Your browser doesn't support canvas such wow</canvas>
+        <div class='container'>
+        <button id='change-tool'></button> - hold X and click to place logic gates, click button to change type. Red = powered. Select a gate and press C to begin a wire. Select another and press C again to attach it.
+        <canvas id='c'>
+            Your browser doesn't support canvas such wow
+        </canvas>
+        </div>
     </body>
     <script type='text/javascript' src='js/jquery.min.js'></script>
     <script type='text/javascript' src='js/fabric.min.js'></script>

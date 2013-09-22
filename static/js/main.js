@@ -50,9 +50,10 @@ fabric.loadSVGFromURL("images/circle.svg", function(objects, options) {
     color_svg(svgs_powered['toggle'], 'red')
 })
 fabric.loadSVGFromURL("images/stopwatch.svg", function(objects, options) {
-    var svg = fabric.util.groupSVGElements(objects, options)
-    svgs_normal['stopwatch'] = fabric.util.object.clone(svg)
-    svgs_powered['stopwatch'] = fabric.util.object.clone(svg)
+    svgs_normal['stopwatch'] = fabric.util.groupSVGElements(objects, options)
+})
+fabric.loadSVGFromURL("images/stopwatch.svg", function(objects, options) {
+    svgs_powered['stopwatch'] = fabric.util.groupSVGElements(objects, options)
     color_svg(svgs_powered['stopwatch'], 'red')
 })
 
@@ -91,6 +92,16 @@ Gate.prototype.update_with = function(serialized) {
     this.on = serialized['state']
     this.rebuild_sprite()
 }
+
+
+var button_states = ops.concat([ 'toggle', 'stopwatch' ])
+var current_state = -1
+function inc_button_state() {
+    current_state = (current_state + 1) % button_states.length
+    $('#change-tool').text(button_states[current_state])
+}
+inc_button_state()
+$('#change-tool').click(inc_button_state)
 
 var Wire = function() {
     this.shape = new fabric.Line( [0, 0, 0, 0], {
@@ -274,9 +285,26 @@ c.on('object:moving', function(e) {
     }
 })
 
+var x_down = false
+$('html').keydown(function(e) {
+    if (e.keyCode == 88) {
+        x_down = true
+    }
+})
+
+$('html').keyup(function(e) {
+    if (e.keyCode == 88) {
+        x_down = false
+    }
+})
+
 c.on('mouse:down', function(e) {
+    console.log(e)
     if (e.target && e.target.hasOwnProperty('gate_id')) {
         socket.emit('click', { 'id': e.target.gate_id })
+    } else if (x_down && typeof(e.target) == 'undefined') {
+        var o = $('#c').offset()
+        socket.emit('create_gate', { 'type': button_states[current_state], 'x': e.e.clientX - o.left, 'y': e.e.clientY - o.top})
     }
 })
 
@@ -343,6 +371,7 @@ $('body').keydown(function(event) {
 
 $('body').mousemove(function(event){
     if (unfinished_wire != null) {
-        unfinished_wire.shape.set({ 'x2': event.pageX, 'y2': event.pageY })
+        var o = $('#c').offset()
+        unfinished_wire.shape.set({ 'x2': event.pageX - o.left, 'y2': event.pageY - o.top})
     }
 })

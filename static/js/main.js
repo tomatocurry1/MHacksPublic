@@ -2,39 +2,62 @@ var c = new fabric.Canvas('c')
 c.setWidth(1000)
 c.setHeight(500)
 
+// Array Remove - By John Resig (MIT Licensed)
+Array.prototype.remove = function(from, to) {
+  var rest = this.slice((to || from) + 1 || this.length);
+  this.length = from < 0 ? this.length + from : from;
+  return this.push.apply(this, rest);
+};
+
 var socket = io.connect()
 
 var gates = {}
-var wires = {}
+var wires = []
 
 var Gate = function() {}
 
+function color_svg(shape, color) {
+    if (shape.isSameColor && shape.isSameColor() || !shape.paths) {
+        shape.setFill(color);
+    } else if (shape.paths) {
+        for (var i = 0; i < shape.paths.length; i++) {
+            shape.paths[i].setFill(color);
+        }
+    }
+}
 
-svgs = {}
+svgs_normal = {}
+svgs_powered = {}
 ops = [ 'and', 'or', 'not', 'nand', 'xor', 'xnor', 'nor' ]
 for (var i = ops.length - 1; i >= 0; i--) {
     fabric.loadSVGFromURL("images/" + ops[i].toUpperCase() + ".svg", (function(index){ 
         return function(objects, options) {
-            svgs[ops[index]] = fabric.util.groupSVGElements(objects, options)
+            svgs_normal[ops[index]] = fabric.util.groupSVGElements(objects, options)
+        }
+    })(i))
+    fabric.loadSVGFromURL("images/" + ops[i].toUpperCase() + ".svg", (function(index){ 
+        return function(objects, options) {
+            svgs_powered[ops[index]] = fabric.util.groupSVGElements(objects, options)
+            color_svg(svgs_powered[ops[index]], 'red')
         }
     })(i))
 }
 
 fabric.loadSVGFromURL("images/circle.svg", function(objects, options) {
-    svgs['toggle'] = fabric.util.groupSVGElements(objects, options)
+    var svg = fabric.util.groupSVGElements(objects, options)
+    svgs_normal['toggle'] = fabric.util.object.clone(svg)
+    svgs_powered['toggle'] = fabric.util.object.clone(svg)
+    color_svg(svgs_powered['toggle'], 'red')
 })
 fabric.loadSVGFromURL("images/stopwatch.svg", function(objects, options) {
-    svgs['stopwatch'] = fabric.util.groupSVGElements(objects, options)
-})
-fabric.loadSVGFromURL("images/circle.svg", function(objects, options) {
-    svgs['splitter'] = fabric.util.groupSVGElements(objects, options).set({
-        scaleX: 0.5,
-        scaleY: 0.5
-    })
+    var svg = fabric.util.groupSVGElements(objects, options)
+    svgs_normal['stopwatch'] = fabric.util.object.clone(svg)
+    svgs_powered['stopwatch'] = fabric.util.object.clone(svg)
+    color_svg(svgs_powered['stopwatch'], 'red')
 })
 
-function get_svg_for_type(type, x, y) {
-    var g = fabric.util.object.clone(svgs[type])
+function get_svg_for_type(type, x, y, powered) {
+    var g = fabric.util.object.clone(powered ? svgs_powered[type] : svgs_normal[type])
     g.set({
         x: x,
         y: y,
@@ -45,17 +68,28 @@ function get_svg_for_type(type, x, y) {
     return g
 }
 
+Gate.prototype.rebuild_sprite = function() {
+    for (var i = c._objects.length - 1; i >= 0; i--) {
+        if (c._objects[i].hasOwnProperty('gate_id') && c._objects[i].gate_id == this.id) {
+            c.remove(c._objects[i])
+        }
+    }
+    //console.log('rebuilding sprite 4 ' + this.id + ' on = ' + this.on)
+    this.shape = get_svg_for_type(this.type, this.x, this.y, this.on)
+    this.shape.left = this.x
+    this.shape.top = this.y
+    this.shape.gate_id = this.id
+    c.add(this.shape)
+}
+
 Gate.prototype.update_with = function(serialized) {
     this.id = serialized['id']
     this.type = serialized['type']
     this.num_args = serialized['num_args']
     this.x = serialized['x']
     this.y = serialized['y']
-    this.shape = get_svg_for_type(this.type, this.x, this.y)
-    this.shape.left = serialized['x']
-    this.shape.top = serialized['y']
-    this.shape.gate_id = this.id
     this.on = serialized['state']
+    this.rebuild_sprite()
 }
 
 var Wire = function() {
@@ -115,7 +149,9 @@ socket.on('error', function(data) {
     console.log(data['tb'])
 })
 
+var inited = false
 socket.on('initial', function(data) {
+    inited = true
     for (var id in data['gates']) {
         if (data['gates'].hasOwnProperty(id)) {
             var g = new Gate()
@@ -124,52 +160,52 @@ socket.on('initial', function(data) {
             c.add(gates[id].shape)
         }
     }
-    for (var start in data['wires']) {
-        if (data['wires'].hasOwnProperty(start)) {
-            wires[start] = new Wire()
-            wires[start].update_with(start, data['wires'][start])
-            c.add(wires[start].shape)
-        }
-    }
+
+    for (var i = data['wires'].length - 1; i >= 0; i--) {
+        var w = new Wire()
+        wires.push(w)
+        w.update_with(data['wires'][i]['from'], data['wires'][i]['to'])
+        c.add(w.shape)
+    };
 })
 
 socket.on('gate_updated', function(data) {
-    console.log('called ' + JSON.stringify(data))
     if (!gates.hasOwnProperty(data['id'])) {
-        console.log('new gate ' + data)
         gates[data['id']] = new Gate()
         gates[data['id']].update_with(data)
         c.add(gates[data['id']].shape)
     } else {
-        var g = gates[data['id']]
-        if (g.type == 'splitter') {
-            var other = !g.parent ? g.child : g.parent
-            other.shape.left += (data.x - g.x)
-            other.shape.top += (data.y - g.y)
-        }
         gates[data['id']].update_with(data)
     }
 })
 
 socket.on('gate_destroyed', function(data) {
-    console.log('destroying gate cs', data['id'], gates[data['id']].shape)
-    //c.remove(gates[data['id']].shape) //would normally delete the shape here but we have to delete it earlier because reasons
+    c.remove(gates[data['id']].shape) //would normally delete the shape here but we have to delete it earlier because reasons
     delete gates[data['id']]
 })
 
+function find_wire(starting_id, ending_id) {
+    for (var i = 0; i < wires.length; i++) {
+        if (starting_id == wires[i].from_gate.id && ending_id == wires[i].to_gate.id)
+            return wires[i]
+    }
+}
+
 socket.on('wire_updated', function(data) {
-    if (!wires.hasOwnProperty(data['from_gate_id'])) {
-        wires[data['from_gate_id']] = new Wire()
-        wires[data['from_gate_id']].update_with(data['from_gate_id'], data['to_gate_id'])
-        c.add(wires[data['from_gate_id']].shape)
+    if (!find_wire(data['from_gate_id'], data['to_gate_id'])) {
+        var w = new Wire()
+        wires.push(w)
+        w.update_with(data['from_gate_id'], data['to_gate_id'])
+        c.add(w.shape)
     } else {
-        wires[data['from_gate_id']].update_with(data['from_gate_id'], data['to_gate_id'])
+        find_wire(data['from_gate_id'], data['to_gate_id']).update_with(data['from_gate_id'], data['to_gate_id'])
     }
 })
 
 socket.on('wire_destroyed', function(data) {
-    c.remove(wires[data['from_gate_id']].shape)
-    delete wires[data['from_gate_id']]
+    var w = find_wire(data['from_gate_id'], data['to_gate_id'])
+    c.remove(w.shape)
+    wires.remove(w)
 })
 
 function find_by_shape(shape) {
@@ -177,15 +213,13 @@ function find_by_shape(shape) {
 }
 
 function update_wires() {
-    for (var start in wires) {
-        if (wires.hasOwnProperty(start)) {
-            var new_input_num = find_number_wires(wires[start].to_gate)
-            if (new_input_num < wires[start].input_num){
-                wires[start].input_num = new_input_num
-                wires[start].setup_shape()
-            }
+    for (var i = 0; i < wires.length; i++) {
+        var new_input_num = find_number_wires(wires[i].to_gate)
+        if (new_input_num < wires[i].input_num){
+            wires[i].input_num = new_input_num
+            wires[i].setup_shape()
         }
-    }
+    };
 }
 
 var last_ping = 0
@@ -194,7 +228,7 @@ function update() {
         c.getActiveGroup().hasControls = false
     }
     update_wires()
-    if (+new Date() - last_ping > 500) {
+    if (inited && +new Date() - last_ping > 500) {
         last_ping = +new Date()
         socket.emit('ping', {})
     }
@@ -203,26 +237,13 @@ function update() {
 }
 fabric.util.requestAnimFrame(update, c.upperCanvasEl)
 
-function color_svg(shape, color) {
-    if (shape.isSameColor && shape.isSameColor() || !shape.paths) {
-        shape.setFill(color);
-    } else if (shape.paths) {
-        for (var i = 0; i < shape.paths.length; i++) {
-            shape.paths[i].setFill(color);
-        }
-    }
-}
-
 socket.on('sim_ping', function(data) {
     //console.log(data)
     for (var id in data) {
         if (data.hasOwnProperty(id)) {
             if (gates[id]){
-                if (data[id]) {
-                    color_svg(gates[id].shape, 'red')
-                } else {
-                    color_svg(gates[id].shape, 'black')
-                }
+                gates[id].on = data[id]
+                gates[id].rebuild_sprite()
             } else {
                 console.log("Got bad gate id " + id)
             }
@@ -242,7 +263,6 @@ c.on('object:moving', function(e) {
     if (e.target.hasOwnProperty('gate_id')) {
         moved({ 'x': e.target.left, 'y': e.target.top }, gates[e.target.gate_id])
     } else if (e.target.hasOwnProperty('_objects')) {
-        console.log(e.target)
         for (var i = e.target._objects.length - 1; i >= 0; i--) {
             if (e.target._objects[i].hasOwnProperty('gate_id')) {
                 moved({
@@ -269,14 +289,6 @@ function get_active() {
         return []
 }
 
-function find_wire(begin, end) {
-    for (var i = wires.length - 1; i >= 0; i--) {
-        if ((begin && wires[i].begin == begin) || (end && wires[i].end == end))
-            return wires[i]
-    }
-    return null
-}
-
 function find_number_wires(end) {
     var t = 0
     for (var start in wires) {
@@ -296,16 +308,14 @@ $('body').keydown(function(event) {
             unfinished_wire = null
         } else if (get_active() != null) {
             for (var i = get_active().length - 1; i >= 0; i--) {
-                console.log(find_by_shape(get_active()[i]).id)
                 socket.emit('destroy_gate', { 'id': find_by_shape(get_active()[i]).id })
-                c.remove(get_active()[i]) //ugly ass hack because it can't be deleted later because reasons
             }
         }
     } else if (event.keyCode == 67) { //c
         var active = c.getActiveObject()
         var active_object = active ? find_by_shape(active) : undefined
 
-        if (unfinished_wire == null && active != null && find_wire(active_object, undefined) == null) {
+        if (unfinished_wire == null && active != null) {
             var coords = calc_output_pos(active_object)
             unfinished_wire = {
                 begin: active_object,
@@ -318,7 +328,6 @@ $('body').keydown(function(event) {
             }
             c.add(unfinished_wire.shape)
         } else if (unfinished_wire != null && active && unfinished_wire.begin != active_object) {
-            console.log(find_number_wires(active_object))
             if (find_number_wires(active_object) < active_object.num_args) {
                 socket.emit('wire_connect', {
                     'from_gate_id': unfinished_wire.begin.id,

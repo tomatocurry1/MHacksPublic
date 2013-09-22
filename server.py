@@ -127,39 +127,6 @@ class Stopwatch(Gate):
 Stopwatch.type = 'stopwatch'
 Stopwatch.num_args = 0
 
-class Splitter(Gate):
-    def __init__(self, id_, x, y, parent = None):
-        super(Splitter, self).__init__(id_, x, y)
-        self.parent = parent
-        if parent:
-            self.child = None
-        else:
-            sim.uid += 1
-            self.child = sim.create_gate('splitter', x, y + 25, parent = self)
-            print 'made child'
-
-    def run(self, input):
-        if self.parent:
-            return self.parent.on
-        else:
-            return input[0]
-
-    def serialize(self):
-        d = super(Splitter, self).serialize()
-        if self.parent:
-            d['parent'] = self.parent
-        else:
-            d['child'] = self.child
-
- 
-    # @property
-    # def num_args(self):
-    #     return 1 # if self.child is not None else 0
-    
-
-Splitter.type = 'splitter'
-Splitter.num_args = 1
-
 classes = [
     AndGate,
     OrGate,
@@ -169,8 +136,7 @@ classes = [
     XNorGate,
     NorGate,
     ToggleButton,
-    Stopwatch,
-    Splitter
+    Stopwatch
 ]
 gate_types = dict(zip(map(lambda c: c.type, classes), classes))
 
@@ -178,11 +144,11 @@ GATE_LIMIT = 1000
 class Simulation(object):
     def __init__(self):
         self.gates = {}
-        self.wires = {}
+        self.wires = []
         self.uid = 0
 
     def create_wire(self, from_gate_id, to_gate_id):
-        self.wires[from_gate_id] = to_gate_id
+        self.wires.append((from_gate_id, to_gate_id))
         self.ws.send_wire_update(from_gate_id, to_gate_id)
 
     def create_gate(self, type_, x, y, **kwargs):
@@ -195,9 +161,9 @@ class Simulation(object):
 
     def destroy_gate(self, id_):
         if id_ in self.gates:
-            for s, e in self.wires.items():
+            for s, e in self.wires:
                 if s == id_ or e == id_:
-                    del self.wires[s]
+                    self.wires.remove((s, e))
                     self.ws.send_wire_destroy(s, e)
             del self.gates[id_]
             self.ws.send_gate_destroy(id_)
@@ -211,14 +177,14 @@ class Simulation(object):
         self.gates[id_].x = new_x
         self.gates[id_].y = new_y
         self.ws.send_gate_update(self.gates[id_].serialize())
-        for s, e in self.wires.items():
+        for s, e in self.wires:
             if s == id_ or e == id_:
                 self.ws.send_wire_update(s, e)
 
     def serialize(self):
         return {
             'gates': { id_ : gate.serialize() for id_, gate in self.gates.items() },
-            'wires': self.wires
+            'wires': [ { 'from': a, 'to': b } for a, b in self.wires ]
         }
 
 sim = Simulation()
@@ -310,7 +276,7 @@ def background_simulate():
         start = time.time()
         for g in sim.gates.values():
             print 'processing', g.id,
-            inputs = map(lambda t: sim.gates[t[0]], filter(lambda t: t[1] == g.id, sim.wires.items()))
+            inputs = map(lambda t: sim.gates[t[0]], filter(lambda t: t[1] == g.id, sim.wires))
             if len(inputs) == g.num_args:
                 g.on = g.run(map(lambda i: i.on, inputs))
             print len(inputs), len(inputs) == g.num_args, g.on

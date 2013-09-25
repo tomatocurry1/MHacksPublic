@@ -171,7 +171,7 @@ class Simulation(object):
             print 'Got id {0}, which is not in {1}'.format(id_, self.gates.keys())
 
     def move_gate(self, id_, new_x, new_y):
-        print 'move', new_x, new_y
+        #print 'move', new_x, new_y
         if id_ not in self.gates.keys():
             raise Exception('No such gate {0} in {1} {2}'.format(id_, self.gates, id_ in self.gates.keys()))
         self.gates[id_].x = new_x
@@ -273,17 +273,20 @@ def run_dev_server():
 TICK_TIME_SECONDS = .5
 def background_simulate():
     while True:
-        start = time.time()
-        for g in sim.gates.values():
-            print 'processing', g.id,
-            inputs = map(lambda t: sim.gates[t[0]], filter(lambda t: t[1] == g.id, sim.wires))
-            if len(inputs) == g.num_args:
-                g.on = g.run(map(lambda i: i.on, inputs))
-            print len(inputs), len(inputs) == g.num_args, g.on
+        try:
+            start = time.time()
+            for g in sim.gates.values():
+                #print 'processing', g.id,
+                inputs = filter(bool, map(lambda t: sim.gates[t[0]] if t[0] in sim.gates else None, filter(lambda t: t[1] == g.id, sim.wires)))
+                if len(inputs) == g.num_args:
+                    g.on = g.run(map(lambda i: i.on, inputs))
+                #print len(inputs), len(inputs) == g.num_args, g.on
 
-        sleeptime = TICK_TIME_SECONDS - time.time() + start
-        if sleeptime > 0:
-            time.sleep(sleeptime)
+            sleeptime = TICK_TIME_SECONDS - time.time() + start
+            if sleeptime > 0:
+                time.sleep(sleeptime)
+        except Exception as e:
+            traceback.print_exc()
 
 if __name__ == '__main__':
     t = threading.Thread(target=background_simulate, args=())

@@ -51,10 +51,10 @@ fabric.loadSVGFromURL("images/circle.svg", function(objects, options) {
 })
 fabric.loadSVGFromURL("images/stopwatch.svg", function(objects, options) {
     svgs_normal['stopwatch'] = fabric.util.groupSVGElements(objects, options)
+    color_svg(svgs_normal['stopwatch'], 'red')
 })
 fabric.loadSVGFromURL("images/stopwatch.svg", function(objects, options) {
     svgs_powered['stopwatch'] = fabric.util.groupSVGElements(objects, options)
-    color_svg(svgs_powered['stopwatch'], 'red')
 })
 
 function get_svg_for_type(type, x, y, powered) {
